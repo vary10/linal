@@ -1,5 +1,5 @@
 import itertools
-
+from copy import deepcopy
 
 class Matrix:
 
@@ -14,6 +14,12 @@ class Matrix:
             self.n = 0
             self.dim = (0, 0)
 
+    def check(self):
+        self.matrix = [
+            [0 if abs(e) < 1e-7 else float(e) for e in l]
+            for l in self.matrix
+        ]
+    
     def __setitem__(self, key, value):
         self.matrix[key] = value
 
@@ -21,9 +27,12 @@ class Matrix:
         return self.matrix[key]
 
     def __str__(self):
+        self.check()
         res = ""
         for i in range(self.m):
-            res += " ".join(map(str, list(map("{:0.4f}".format, self[i])))) + "\n"
+            res += " ".join(
+                map(str, list(map("{:0.6f}".format, self[i])))
+            ) + "\n"
         res = res[:-1]
         return res
 
@@ -31,6 +40,8 @@ class Matrix:
         return self.matrix.__iter__()
 
     def __eq__(self, other):
+        self.check()
+        other.check()
         return (self.matrix == other.matrix)
 
     def __add__(self, other):
@@ -68,11 +79,9 @@ class Matrix:
                                 res[i][j] += line[0][k] * column[0][k]
                     return res
                 else:
-                    print("Умножение не выполнено.\n\
-                              Количество столбцов первой матрицы \
-                              не равно количеству столбцов второй.")
+                    print("Wrong dims")
             else:
-                print("Неправвильное")
+                print("Nor matrix, nor num")
 
     def __truediv__(self, other):
         return self * (1 / other)
@@ -106,6 +115,12 @@ class Matrix:
                     res += 1
         return res
 
+    def sq_norm(self):
+        return sum([sum(l) for l in (self ** 2).matrix])
+    
+    def trace(self):
+        return sum([self[i][i] for i in range(self.m)])
+    
     def det(self):
         if self.m == self.n:
             res = 0
@@ -131,33 +146,40 @@ class Matrix:
                     tmp[p].pop(j)
                 tmp.pop(i)
                 tmp = Matrix(tmp)
-                res[i][j] = (-1) ** (i + j) * tmp.det()
+                d = tmp.det()
+                res[i][j] = (-1) ** (i + j) * d if d != 0 else d
         return res
 
-    def rearrange(self):
+    def rearrange(self, idxs):
         i = self.m - 1
         while i >= 0:
             if self[i].count(0) == self.n:
                 k = self.matrix.pop(i)
+                idx = idxs.pop(i)
                 self.matrix.append(k)
+                idxs.append(idx)
                 i -=1
             else:
                 i -= 1
+        return idxs
 
-    def gauss(self, m, n):
+    def gauss(self, m=0, n=0, idxs=0):
+        tmp = deepcopy(self)
+        if idxs == 0:
+            idxs = [i for i in range(self.m)]
         try:
-            self.rearrange()
-            if self[m][n] != 0:
-                Matrix.div_line(self[m], self[m][n])
-                for i in range(self.m):
+            idxs = tmp.rearrange(idxs)
+            if tmp[m][n] != 0:
+                Matrix.div_line(tmp[m], tmp[m][n])
+                for i in range(tmp.m):
                     if i != m:
-                        k = self[i][n] / self[m][n]
-                        for j in range(n, self.n):
-                            self[i][j] -= self[m][j] * k
-            return self.gauss(m + 1, n + 1)
+                        k = tmp[i][n] / tmp[m][n]
+                        for j in range(n, tmp.n):
+                            tmp[i][j] -= tmp[m][j] * k
+            return tmp.gauss(m + 1, n + 1, idxs)
         except:
-            self.rearrange()
-            return self
+            idxs = tmp.rearrange(idxs)
+            return tmp, idxs
 
     def div_line(line, n):
         for i in range(len(line) - 1, -1, -1):
@@ -166,25 +188,24 @@ class Matrix:
                 line[i] = 0.0
         return line
 
-    def s_rk(self):
-        self.gauss(0, 0)
-        for i in range(self.m):
-            if self[i].count(0) == self.n:
-                return i
-        return self.m
-
     def rk(self):
-        return self.copy((0, self.m)).s_rk()
+        tmp, idxs = self.gauss()
+        for i in range(tmp.m):
+            if tmp[i].count(0) == tmp.n:
+                return i, idxs
+        return tmp.m, idxs
 
     def decomp(self):
-        tmp = self.copy((0, self.m))
-        rank = tmp.s_rk()
-        C = tmp.copy((0, rank))
-        B = self.ccopy((0, rank))
+        tmp = deepcopy(self)
+        rank, idxs = tmp.rk()
+        C = Matrix([self[i] for i in idxs[:rank]])
+        B = self * (C.transposed() * (C * C.transposed()).inverse())
         return (B, C)
 
     def __pow__(self, other):
-        if other == "*":
+        if other == 2:
+            return Matrix([[e ** 2 for e in l] for l in self.matrix])
+        elif other == "*":
             return self.transposed()
         elif other == -1:
             return self.inverse()
@@ -194,7 +215,3 @@ class Matrix:
         res = C.transposed() * (C * C.transposed()).inverse()
         res1 = (B.transposed() * B).inverse() * B.transposed()
         return res * res1
-
-# a = Matrix([[1, 1, 1], [2, 2, 2], [3, 3, 3], [1, 2, 15]])
-# b = Matrix([[15], [4], [5]])
-# print(a.pseudo_inverse())
